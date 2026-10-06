@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import NumberPad from './NumberPad';
-import { generateQuestion, Question, PlayerStats, calculatePercentage, formatTime, getAdvice } from '../utils/gameUtils';
+import { generateQuestion, Question, PlayerStats, calculatePercentage, formatTime, getAdvice, Difficulty } from '../utils/gameUtils';
 
 interface TugOfWarProps {
   onHome: () => void;
@@ -10,8 +10,9 @@ interface TugOfWarProps {
 const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
   const [gameStarted, setGameStarted] = useState(false);
   const [timeLimit, setTimeLimit] = useState(3);
+  const [difficulty, setDifficulty] = useState<Difficulty>('2-digit');
   const [ropePosition, setRopePosition] = useState(0);
-  const [question, setQuestion] = useState<Question>(generateQuestion());
+  const [question, setQuestion] = useState<Question>(generateQuestion('2-digit'));
   const [activeTeam, setActiveTeam] = useState<0 | 1>(0);
   const [team1Input, setTeam1Input] = useState('');
   const [team2Input, setTeam2Input] = useState('');
@@ -108,7 +109,7 @@ const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
         setTeam2Stats(prev => ({ ...prev, correct: prev.correct + 1, ...newStats }));
         setTeam2Input('');
       }
-      setQuestion(generateQuestion());
+      setQuestion(generateQuestion(difficulty));
     } else if (input.length >= String(question.answer).length) {
       if (teamIdx === 0) {
         setTeam1Stats(prev => ({ ...prev, incorrect: prev.incorrect + 1 }));
@@ -121,7 +122,7 @@ const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
       if (teamIdx === 0) setTeam1Input(input);
       else setTeam2Input(input);
     }
-  }, [question, team1Stats, team2Stats, endGame]);
+  }, [question, team1Stats, team2Stats, endGame, difficulty]);
 
   const handleTeam1Digit = (digit: string) => {
     if (gameOver) return;
@@ -137,7 +138,7 @@ const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
     setTimeLimit(minutes);
     setTimeRemaining(minutes * 60);
     setRopePosition(0);
-    setQuestion(generateQuestion());
+    setQuestion(generateQuestion(difficulty));
     setTeam1Input('');
     setTeam2Input('');
     setTeam1Stats({ correct: 0, incorrect: 0, totalTime: 0, questionsAnswered: [], answersGiven: [], correctAnswers: [] });
@@ -177,18 +178,53 @@ const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
             First team to pull past the baseline wins!
           </p>
           
+          <h3 className="font-bold text-gray-700 mb-3">📊 Select Difficulty:</h3>
+          <div className="grid grid-cols-1 gap-2 mb-6">
+            {[
+              { value: '1-digit', label: '1-Digit', example: '5 + 3' },
+              { value: '1x2-digit', label: '1-by-2 Digit', example: '7 + 25' },
+              { value: '2-digit', label: '2-Digit', example: '25 + 47' },
+              { value: '2x3-digit', label: '2-by-3 Digit', example: '47 + 256' },
+              { value: '3-digit', label: '3-Digit', example: '256 + 487' },
+            ].map(d => (
+              <button
+                key={d.value}
+                onClick={() => setDifficulty(d.value as Difficulty)}
+                className={`py-3 px-4 rounded-xl font-bold text-base transition-all duration-200 transform hover:scale-105 flex justify-between items-center ${
+                  difficulty === d.value
+                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg scale-105'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <span>{d.label}</span>
+                <span className="text-sm opacity-75">{d.example}</span>
+              </button>
+            ))}
+          </div>
+
           <h3 className="font-bold text-gray-700 mb-3">⏱️ Select Time Limit:</h3>
           <div className="grid grid-cols-3 gap-3 mb-6">
             {[1, 3, 5, 7, 10, 15].map(min => (
               <button
                 key={min}
-                onClick={() => startGame(min)}
-                className="bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold py-3 rounded-xl text-lg shadow-lg hover:scale-105 transition-all"
+                onClick={() => setTimeLimit(min)}
+                className={`py-3 rounded-xl font-bold text-lg transition-all duration-200 transform hover:scale-105 ${
+                  timeLimit === min
+                    ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg scale-105'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
               >
                 {min} min
               </button>
             ))}
           </div>
+
+          <button
+            onClick={() => startGame(timeLimit)}
+            className="w-full bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold py-4 px-6 rounded-xl text-xl transition-all duration-200 transform hover:scale-105 shadow-lg mb-4"
+          >
+            🎮 Start Game!
+          </button>
 
           <div className="bg-orange-50 rounded-2xl p-4 mb-6 border-2 border-orange-200 text-left">
             <h4 className="font-bold text-orange-700 mb-2">📋 Rules:</h4>
@@ -228,12 +264,21 @@ const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
 
       {/* Timer & Score Bar */}
       <div className="relative z-10 bg-white/90 backdrop-blur-sm shadow-lg p-3">
-        <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <div className="text-blue-600 font-bold">🔵 Alpha: {team1Stats.correct}</div>
-          <div className={`text-center font-bold text-xl ${timeRemaining <= 30 ? 'text-red-600 animate-pulse' : 'text-gray-700'}`}>
+        <div className="max-w-4xl mx-auto flex justify-between items-center gap-2">
+          <div className="text-blue-600 font-bold text-sm md:text-base">🔵 Alpha: {team1Stats.correct}</div>
+          <div className={`text-center font-bold text-lg md:text-xl ${timeRemaining <= 30 ? 'text-red-600 animate-pulse' : 'text-gray-700'}`}>
             ⏱️ {formatTime(timeRemaining)}
           </div>
-          <div className="text-red-600 font-bold">Beta: {team2Stats.correct} 🔴</div>
+          <div className="text-red-600 font-bold text-sm md:text-base">Beta: {team2Stats.correct} 🔴</div>
+        </div>
+        <div className="max-w-4xl mx-auto mt-2 flex justify-center">
+          <button
+            onClick={() => endGame()}
+            disabled={gameOver}
+            className="bg-gradient-to-r from-gray-600 to-gray-700 text-white font-bold py-2 px-4 rounded-xl text-sm hover:scale-105 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            🏁 End Match
+          </button>
         </div>
       </div>
 
