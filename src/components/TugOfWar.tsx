@@ -1,89 +1,67 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { generateAdditionQuestion } from '../utils/math';
-import { StatsOverlay } from './StatsOverlay';
+import confetti from 'canvas-confetti';
+import NumberPad from './NumberPad';
+import { generateQuestion, Question, PlayerStats, calculatePercentage, formatTime, getAdvice } from '../utils/gameUtils';
 
 interface TugOfWarProps {
-  onBack: () => void;
+  onHome: () => void;
 }
 
-interface TeamStats {
-  name: string;
-  correct: number;
-  incorrect: number;
-  total: number;
-  time: number;
-}
-
-export const TugOfWar: React.FC<TugOfWarProps> = ({ onBack }) => {
-  const [phase, setPhase] = useState<'setup' | 'playing' | 'finished'>('setup');
+const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
+  const [gameStarted, setGameStarted] = useState(false);
   const [timeLimit, setTimeLimit] = useState(3);
   const [ropePosition, setRopePosition] = useState(0);
-  const [currentQuestion, setCurrentQuestion] = useState(generateAdditionQuestion());
+  const [question, setQuestion] = useState<Question>(generateQuestion());
   const [activeTeam, setActiveTeam] = useState<0 | 1>(0);
-  const [inputValues, setInputValues] = useState(['', '']);
-  const [teamStats, setTeamStats] = useState<TeamStats[]>([
-    { name: 'Team Alpha', correct: 0, incorrect: 0, total: 0, time: 0 },
-    { name: 'Team Beta', correct: 0, incorrect: 0, total: 0, time: 0 },
-  ]);
-  const [startTime, setStartTime] = useState(0);
+  const [team1Input, setTeam1Input] = useState('');
+  const [team2Input, setTeam2Input] = useState('');
   const [timeRemaining, setTimeRemaining] = useState(0);
-  const [showStats, setShowStats] = useState(false);
-  const [winner, setWinner] = useState<number | undefined>(undefined);
-  const [flashTeam, setFlashTeam] = useState<number | null>(null);
-  const [shakeRope, setShakeRope] = useState(false);
   const [gameOver, setGameOver] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [winner, setWinner] = useState<'team1' | 'team2' | null>(null);
+  const [flashTeam, setFlashTeam] = useState<number | null>(null);
+  const [startTime, setStartTime] = useState(0);
   const gameOverRef = useRef(false);
-  const startTimeRef = useRef(0);
+
+  const [team1Stats, setTeam1Stats] = useState<PlayerStats>({
+    correct: 0, incorrect: 0, totalTime: 0,
+    questionsAnswered: [], answersGiven: [], correctAnswers: [],
+  });
+  const [team2Stats, setTeam2Stats] = useState<PlayerStats>({
+    correct: 0, incorrect: 0, totalTime: 0,
+    questionsAnswered: [], answersGiven: [], correctAnswers: [],
+  });
 
   const BASELINE = 70;
 
-  const endGame = useCallback((winnerIdx?: number) => {
+  const endGame = useCallback((winnerTeam?: 'team1' | 'team2') => {
     if (gameOverRef.current) return;
     gameOverRef.current = true;
     setGameOver(true);
-    setPhase('finished');
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
     
-    const elapsed = Date.now() - startTimeRef.current;
-    
-    if (winnerIdx !== undefined) {
-      setWinner(winnerIdx);
+    if (winnerTeam) {
+      setWinner(winnerTeam);
     } else {
       setRopePosition(pos => {
-        if (pos < 0) setWinner(0);
-        else if (pos > 0) setWinner(1);
-        else setWinner(undefined);
+        if (pos < 0) setWinner('team1');
+        else if (pos > 0) setWinner('team2');
+        else setWinner(null);
         return pos;
       });
     }
-    
-    setTeamStats(prev => prev.map(s => ({ ...s, time: elapsed })));
-    setTimeout(() => setShowStats(true), 500);
-  }, []);
 
-  const initGame = (minutes: number) => {
-    setTimeLimit(minutes);
-    setTimeRemaining(minutes * 60);
-    setRopePosition(0);
-    setCurrentQuestion(generateAdditionQuestion());
-    setInputValues(['', '']);
-    setTeamStats([
-      { name: 'Team Alpha', correct: 0, incorrect: 0, total: 0, time: 0 },
-      { name: 'Team Beta', correct: 0, incorrect: 0, total: 0, time: 0 },
-    ]);
-    const now = Date.now();
-    setStartTime(now);
-    startTimeRef.current = now;
-    setWinner(undefined);
-    setGameOver(false);
-    gameOverRef.current = false;
-    setPhase('playing');
-  };
+    setTeam1Stats(prev => ({ ...prev, totalTime: elapsed }));
+    setTeam2Stats(prev => ({ ...prev, totalTime: elapsed }));
+    setTimeout(() => {
+      setShowStats(true);
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+    }, 500);
+  }, [startTime]);
 
-  // Timer
   useEffect(() => {
-    if (phase !== 'playing') return;
-    const interval = setInterval(() => {
+    if (!gameStarted || gameOver) return;
+    const timer = setInterval(() => {
       setTimeRemaining(prev => {
         if (prev <= 1) {
           endGame();
@@ -92,340 +70,241 @@ export const TugOfWar: React.FC<TugOfWarProps> = ({ onBack }) => {
         return prev - 1;
       });
     }, 1000);
-    return () => clearInterval(interval);
-  }, [phase, endGame]);
+    return () => clearInterval(timer);
+  }, [gameStarted, gameOver, endGame]);
 
-  const checkAnswer = useCallback((teamIdx: number, value: string) => {
-    if (gameOverRef.current) return;
-    
-    setCurrentQuestion(prevQ => {
-      const answer = prevQ.answer;
+  const checkAnswer = useCallback((teamIdx: number, input: string) => {
+    if (gameOverRef.current || input.length === 0) return;
+    const answer = parseInt(input);
+    const encodedQ = question.num1 * 10000 + question.num2;
 
-      if (parseInt(value) === answer) {
-        setFlashTeam(teamIdx);
-        setShakeRope(true);
-        setTimeout(() => { setFlashTeam(null); setShakeRope(false); }, 600);
+    if (answer === question.answer) {
+      setFlashTeam(teamIdx);
+      setTimeout(() => setFlashTeam(null), 600);
 
-        const pullAmount = 8 + Math.random() * 4;
-        
-        setRopePosition(prev => {
-          const newPos = teamIdx === 0 ? prev - pullAmount : prev + pullAmount;
-          
-          if (newPos <= -BASELINE) {
-            endGame(0);
-            return -BASELINE;
-          } else if (newPos >= BASELINE) {
-            endGame(1);
-            return BASELINE;
-          }
-          return newPos;
-        });
+      const pullAmount = 8 + Math.random() * 4;
+      setRopePosition(prev => {
+        const newPos = teamIdx === 0 ? prev - pullAmount : prev + pullAmount;
+        if (newPos <= -BASELINE) {
+          endGame('team1');
+          return -BASELINE;
+        } else if (newPos >= BASELINE) {
+          endGame('team2');
+          return BASELINE;
+        }
+        return newPos;
+      });
 
-        setTeamStats(prev => prev.map((s, i) =>
-          i === teamIdx ? { ...s, correct: s.correct + 1, total: s.total + 1 } : s
-        ));
-        setInputValues(prev => { const n = [...prev]; n[teamIdx] = ''; return n; });
-        return generateAdditionQuestion();
-      } else if (value.length >= String(answer).length) {
-        setTeamStats(prev => prev.map((s, i) =>
-          i === teamIdx ? { ...s, incorrect: s.incorrect + 1, total: s.total + 1 } : s
-        ));
-        setInputValues(prev => { const n = [...prev]; n[teamIdx] = ''; return n; });
-        return prevQ;
+      const newStats = {
+        questionsAnswered: [...(teamIdx === 0 ? team1Stats : team2Stats).questionsAnswered, encodedQ],
+        answersGiven: [...(teamIdx === 0 ? team1Stats : team2Stats).answersGiven, answer],
+        correctAnswers: [...(teamIdx === 0 ? team1Stats : team2Stats).correctAnswers, question.answer],
+      };
+
+      if (teamIdx === 0) {
+        setTeam1Stats(prev => ({ ...prev, correct: prev.correct + 1, ...newStats }));
+        setTeam1Input('');
       } else {
-        setInputValues(prev => { const n = [...prev]; n[teamIdx] = value; return n; });
-        return prevQ;
+        setTeam2Stats(prev => ({ ...prev, correct: prev.correct + 1, ...newStats }));
+        setTeam2Input('');
       }
-    });
-  }, [endGame]);
-
-  const handleInput = (teamIdx: number, value: string) => {
-    if (phase !== 'playing' || gameOverRef.current) return;
-    if (value === '') {
-      setInputValues(prev => { const n = [...prev]; n[teamIdx] = ''; return n; });
-      return;
+      setQuestion(generateQuestion());
+    } else if (input.length >= String(question.answer).length) {
+      if (teamIdx === 0) {
+        setTeam1Stats(prev => ({ ...prev, incorrect: prev.incorrect + 1 }));
+        setTeam1Input('');
+      } else {
+        setTeam2Stats(prev => ({ ...prev, incorrect: prev.incorrect + 1 }));
+        setTeam2Input('');
+      }
+    } else {
+      if (teamIdx === 0) setTeam1Input(input);
+      else setTeam2Input(input);
     }
-    checkAnswer(teamIdx, value);
+  }, [question, team1Stats, team2Stats, endGame]);
+
+  const handleTeam1Digit = (digit: string) => {
+    if (gameOver) return;
+    setTeam1Input(prev => prev.length < 4 ? prev + digit : prev);
+  };
+
+  const handleTeam2Digit = (digit: string) => {
+    if (gameOver) return;
+    setTeam2Input(prev => prev.length < 4 ? prev + digit : prev);
+  };
+
+  const startGame = (minutes: number) => {
+    setTimeLimit(minutes);
+    setTimeRemaining(minutes * 60);
+    setRopePosition(0);
+    setQuestion(generateQuestion());
+    setTeam1Input('');
+    setTeam2Input('');
+    setTeam1Stats({ correct: 0, incorrect: 0, totalTime: 0, questionsAnswered: [], answersGiven: [], correctAnswers: [] });
+    setTeam2Stats({ correct: 0, incorrect: 0, totalTime: 0, questionsAnswered: [], answersGiven: [], correctAnswers: [] });
+    setStartTime(Date.now());
+    setWinner(undefined as any);
+    setGameOver(false);
+    gameOverRef.current = false;
+    setGameStarted(true);
   };
 
   // Keyboard support
   useEffect(() => {
-    if (phase !== 'playing') return;
+    if (!gameStarted || gameOver) return;
     const handleKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'BUTTON') return;
-      
-      if (e.key >= '0' && e.key <= '9') {
-        const team = activeTeam;
-        const newValue = inputValues[team] + e.key;
-        checkAnswer(team, newValue);
-      } else if (e.key === 'Backspace') {
-        setInputValues(prev => {
-          const n = [...prev];
-          n[activeTeam] = n[activeTeam].slice(0, -1);
-          return n;
-        });
-      } else if (e.key === 'Tab') {
+      if (e.key === 'Tab') {
         e.preventDefault();
         setActiveTeam(prev => (prev === 0 ? 1 : 0) as 0 | 1);
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [phase, activeTeam, inputValues, checkAnswer]);
+  }, [gameStarted, gameOver]);
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  const ropePercent = (ropePosition / BASELINE) * 40;
+  const p1Pct = calculatePercentage(team1Stats.correct, team1Stats.questionsAnswered.length);
+  const p2Pct = calculatePercentage(team2Stats.correct, team2Stats.questionsAnswered.length);
 
-  if (phase === 'setup') {
+  if (!gameStarted) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-sky-300 via-sky-200 to-green-300 flex items-center justify-center p-4">
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
-        >
-          <h2 className="text-3xl font-bold text-center text-red-700 mb-4">🦸 Tug of War</h2>
-          <p className="text-center text-gray-600 mb-2">Two teams compete to pull the rope to their side!</p>
-          <p className="text-center text-gray-500 mb-6 text-sm">Answer questions correctly to pull the rope. First team to pull past the baseline wins!</p>
+      <div className="min-h-screen bg-gradient-to-b from-sky-300 via-sky-200 to-green-300 flex items-center justify-center">
+        <div className="bg-white rounded-3xl p-8 shadow-2xl max-w-md w-full mx-4 text-center">
+          <div className="text-6xl mb-4">🪢</div>
+          <h2 className="text-3xl font-bold text-red-700 mb-6">Tug of War</h2>
+          <p className="text-gray-600 mb-4">
+            Two teams compete! Answer addition questions correctly to pull the rope to your side.
+            First team to pull past the baseline wins!
+          </p>
           
           <h3 className="font-bold text-gray-700 mb-3">⏱️ Select Time Limit:</h3>
           <div className="grid grid-cols-3 gap-3 mb-6">
             {[1, 3, 5, 7, 10, 15].map(min => (
-              <motion.button
+              <button
                 key={min}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => initGame(min)}
-                className="bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold py-3 rounded-2xl text-lg shadow-lg"
+                onClick={() => startGame(min)}
+                className="bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold py-3 rounded-xl text-lg shadow-lg hover:scale-105 transition-all"
               >
                 {min} min
-              </motion.button>
+              </button>
             ))}
           </div>
-          <button onClick={onBack} className="w-full text-gray-500 hover:text-gray-700 font-medium py-2">
-            ← Back to Menu
+
+          <div className="bg-orange-50 rounded-2xl p-4 mb-6 border-2 border-orange-200 text-left">
+            <h4 className="font-bold text-orange-700 mb-2">📋 Rules:</h4>
+            <ul className="text-sm text-orange-800 space-y-1">
+              <li>• Each correct answer pulls the rope toward your side</li>
+              <li>• Pull the rope past the baseline to win!</li>
+              <li>• If time runs out, the team closest to their baseline wins</li>
+              <li>• Press Tab to switch between teams</li>
+            </ul>
+          </div>
+
+          <button
+            onClick={onHome}
+            className="block mx-auto text-gray-500 hover:text-gray-700 font-medium"
+          >
+            ← Back to Home
           </button>
-        </motion.div>
+        </div>
       </div>
     );
   }
-
-  const ropePercent = (ropePosition / BASELINE) * 40;
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-sky-400 via-sky-300 to-green-400 overflow-hidden relative">
       {/* Clouds */}
       <div className="absolute top-0 left-0 w-full h-40 pointer-events-none overflow-hidden">
-        {[...Array(5)].map((_, i) => (
-          <motion.div
+        {[...Array(4)].map((_, i) => (
+          <div
             key={i}
-            className="absolute text-5xl opacity-60"
-            style={{ top: `${10 + i * 15}%` }}
-            animate={{ x: ['-10vw', '110vw'] }}
-            transition={{ duration: 30 + i * 10, repeat: Infinity, delay: i * 5 }}
+            className="absolute text-5xl opacity-50 animate-pulse"
+            style={{ top: `${10 + i * 18}%`, left: `${i * 25}%`, animationDelay: `${i * 0.5}s` }}
           >
             ☁️
-          </motion.div>
+          </div>
         ))}
       </div>
 
       {/* Timer & Score Bar */}
       <div className="relative z-10 bg-white/90 backdrop-blur-sm shadow-lg p-3">
-        <div className="flex justify-between items-center max-w-4xl mx-auto">
-          <div className="text-blue-600 font-bold text-sm md:text-base">
-            🔵 Alpha: {teamStats[0].correct}
-          </div>
-          <div className={`text-center font-bold text-lg md:text-xl ${timeRemaining <= 30 ? 'text-red-600 animate-pulse' : 'text-gray-700'}`}>
+        <div className="max-w-4xl mx-auto flex justify-between items-center">
+          <div className="text-blue-600 font-bold">🔵 Alpha: {team1Stats.correct}</div>
+          <div className={`text-center font-bold text-xl ${timeRemaining <= 30 ? 'text-red-600 animate-pulse' : 'text-gray-700'}`}>
             ⏱️ {formatTime(timeRemaining)}
           </div>
-          <div className="text-red-600 font-bold text-sm md:text-base">
-            Beta: {teamStats[1].correct} 🔴
-          </div>
+          <div className="text-red-600 font-bold">Beta: {team2Stats.correct} 🔴</div>
         </div>
       </div>
 
       {/* Arena */}
-      <div className="flex-1 flex flex-col items-center justify-center relative px-4 min-h-[300px]">
-        {/* Grass ground */}
+      <div className="flex-1 flex flex-col items-center justify-center relative px-4 min-h-[250px]">
+        {/* Grass */}
         <div className="absolute bottom-0 left-0 w-full h-[35%] bg-gradient-to-t from-green-700 via-green-500 to-green-400 rounded-t-[50%]" />
-        
-        {/* Sun */}
         <div className="absolute top-4 right-8 text-5xl opacity-80">☀️</div>
 
-        {/* Baseline markers */}
-        <div className="absolute left-[12%] top-[40%] bottom-[35%] w-1.5 bg-white/70 rounded-full" />
-        <div className="absolute right-[12%] top-[40%] bottom-[35%] w-1.5 bg-white/70 rounded-full" />
-        <div className="absolute left-[10%] top-[37%] text-xl">🏁</div>
-        <div className="absolute right-[10%] top-[37%] text-xl">🏁</div>
+        {/* Baselines */}
+        <div className="absolute left-[12%] top-[35%] bottom-[35%] w-1.5 bg-white/60 rounded-full" />
+        <div className="absolute right-[12%] top-[35%] bottom-[35%] w-1.5 bg-white/60 rounded-full" />
+        <div className="absolute left-[10%] top-[32%] text-xl">🏁</div>
+        <div className="absolute right-[10%] top-[32%] text-xl">🏁</div>
 
-        {/* Center line */}
-        <div className="absolute left-1/2 top-[40%] bottom-[35%] w-0.5 bg-white/30 -translate-x-1/2" />
-
-        {/* Rope & Characters Container */}
-        <div className="relative w-full max-w-3xl h-48 md:h-64 flex items-center">
+        {/* Rope area */}
+        <div className="relative w-full max-w-3xl h-48 flex items-center">
           {/* Rope */}
-          <motion.div
-            className="absolute top-1/2 left-[12%] right-[12%] h-5 -translate-y-1/2"
-            animate={shakeRope ? { y: ['-50%', 'calc(-50% - 4px)', 'calc(-50% + 4px)', '-50%'] } : {}}
-            transition={{ duration: 0.2, repeat: 2 }}
-          >
+          <div className="absolute top-1/2 left-[12%] right-[12%] h-4 -translate-y-1/2">
             <div className="w-full h-full relative">
-              {/* Main rope */}
               <div className="absolute inset-0 bg-gradient-to-r from-amber-800 via-yellow-600 to-amber-800 rounded-full shadow-md" />
-              {/* Rope texture */}
-              {[...Array(25)].map((_, i) => (
-                <div
-                  key={i}
-                  className="absolute top-0.5 bottom-0.5 w-0.5 bg-amber-900/40"
-                  style={{ left: `${i * 4 + 1}%`, transform: `rotate(${i % 2 === 0 ? 20 : -20}deg)` }}
-                />
+              {[...Array(20)].map((_, i) => (
+                <div key={i} className="absolute top-0.5 bottom-0.5 w-0.5 bg-amber-900/30" style={{ left: `${i * 5 + 1}%`, transform: `rotate(${i % 2 === 0 ? 15 : -15}deg)` }} />
               ))}
-              {/* Rope highlight */}
-              <div className="absolute top-0.5 left-0 right-0 h-1.5 bg-yellow-300/30 rounded-full" />
-              
-              {/* Center marker (red ribbon) */}
-              <motion.div
-                className="absolute top-1/2 -translate-y-1/2 w-7 h-10 bg-red-500 rounded-sm shadow-lg border-2 border-red-700 z-10"
-                animate={{ left: `calc(50% + ${ropePercent * 0.8}% - 14px)` }}
-                transition={{ type: 'spring', damping: 12 }}
+              {/* Center ribbon */}
+              <div
+                className="absolute top-1/2 -translate-y-1/2 w-6 h-8 bg-red-500 rounded-sm shadow-lg border-2 border-red-700 transition-all duration-300"
+                style={{ left: `calc(50% + ${ropePercent * 0.8}% - 12px)` }}
               >
-                <div className="absolute inset-0 bg-gradient-to-b from-red-400 to-red-600 rounded-sm" />
-                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[7px] border-r-[7px] border-t-[10px] border-transparent border-t-red-500" />
-              </motion.div>
-            </div>
-          </motion.div>
-
-          {/* Team 1 Characters (Left) */}
-          <motion.div
-            className="absolute left-[2%] md:left-[4%] flex flex-col items-center z-20"
-            animate={{ x: `${ropePercent * 0.4}%` }}
-            transition={{ type: 'spring', damping: 12 }}
-          >
-            <motion.div
-              animate={flashTeam === 0 ? { scale: [1, 1.15, 1], rotate: [0, -8, 8, 0] } : {}}
-              transition={{ duration: 0.4 }}
-              className="relative"
-            >
-              <div 
-                className="text-7xl md:text-9xl select-none"
-                style={{ filter: flashTeam === 0 ? 'brightness(1.3) drop-shadow(0 0 15px #3b82f6)' : 'drop-shadow(2px 4px 6px rgba(0,0,0,0.3))' }}
-              >
-                🦸‍♂️
+                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-transparent border-t-red-500" />
               </div>
-              {flashTeam === 0 && (
-                <>
-                  <motion.div
-                    initial={{ scale: 0, opacity: 0.8 }}
-                    animate={{ scale: 2.5, opacity: 0 }}
-                    transition={{ duration: 0.6 }}
-                    className="absolute inset-0 rounded-full bg-blue-400/40"
-                  />
-                  <motion.div
-                    initial={{ opacity: 1, scale: 0.5 }}
-                    animate={{ opacity: 0, scale: 1.5, y: -20 }}
-                    transition={{ duration: 0.8 }}
-                    className="absolute -top-4 left-1/2 -translate-x-1/2 text-2xl"
-                  >
-                    💪
-                  </motion.div>
-                </>
-              )}
-            </motion.div>
-            <div className="bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full mt-1 shadow-md">
-              ALPHA
             </div>
-          </motion.div>
+          </div>
 
-          {/* Team 2 Characters (Right) */}
-          <motion.div
-            className="absolute right-[2%] md:right-[4%] flex flex-col items-center z-20"
-            animate={{ x: `${ropePercent * 0.4}%` }}
-            transition={{ type: 'spring', damping: 12 }}
+          {/* Team 1 Character */}
+          <div
+            className="absolute left-[2%] flex flex-col items-center transition-all duration-300"
+            style={{ transform: `translateX(${ropePercent * 0.4}%)` }}
           >
-            <motion.div
-              animate={flashTeam === 1 ? { scale: [1, 1.15, 1], rotate: [0, 8, -8, 0] } : {}}
-              transition={{ duration: 0.4 }}
-              className="relative"
-            >
-              <div 
-                className="text-7xl md:text-9xl select-none"
-                style={{ filter: flashTeam === 1 ? 'brightness(1.3) drop-shadow(0 0 15px #ef4444)' : 'drop-shadow(2px 4px 6px rgba(0,0,0,0.3))' }}
-              >
-                🦸‍♀️
-              </div>
-              {flashTeam === 1 && (
-                <>
-                  <motion.div
-                    initial={{ scale: 0, opacity: 0.8 }}
-                    animate={{ scale: 2.5, opacity: 0 }}
-                    transition={{ duration: 0.6 }}
-                    className="absolute inset-0 rounded-full bg-red-400/40"
-                  />
-                  <motion.div
-                    initial={{ opacity: 1, scale: 0.5 }}
-                    animate={{ opacity: 0, scale: 1.5, y: -20 }}
-                    transition={{ duration: 0.8 }}
-                    className="absolute -top-4 left-1/2 -translate-x-1/2 text-2xl"
-                  >
-                    💪
-                  </motion.div>
-                </>
-              )}
-            </motion.div>
-            <div className="bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full mt-1 shadow-md">
-              BETA
+            <div className={`text-7xl md:text-8xl select-none transition-all duration-300 ${flashTeam === 0 ? 'scale-110' : ''}`}
+              style={{ filter: flashTeam === 0 ? 'brightness(1.3) drop-shadow(0 0 10px #3b82f6)' : 'drop-shadow(2px 4px 6px rgba(0,0,0,0.3))' }}>
+              🦸‍♂️
             </div>
-          </motion.div>
+            <div className="bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full mt-1 shadow-md">ALPHA</div>
+          </div>
 
-          {/* Pull effect particles */}
-          <AnimatePresence>
-            {flashTeam !== null && (
-              <motion.div
-                initial={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-              >
-                {[...Array(8)].map((_, i) => (
-                  <motion.div
-                    key={i}
-                    className="absolute w-3 h-3 rounded-full"
-                    style={{ backgroundColor: flashTeam === 0 ? '#3b82f6' : '#ef4444' }}
-                    initial={{ scale: 0, x: 0, y: 0, opacity: 1 }}
-                    animate={{
-                      scale: [0, 1.5, 0],
-                      x: (flashTeam === 0 ? -1 : 1) * (40 + i * 12) * Math.cos(i * 45 * Math.PI / 180),
-                      y: (30 + i * 8) * Math.sin(i * 45 * Math.PI / 180),
-                      opacity: [1, 1, 0],
-                    }}
-                    transition={{ duration: 0.7, delay: i * 0.04 }}
-                  />
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Team 2 Character */}
+          <div
+            className="absolute right-[2%] flex flex-col items-center transition-all duration-300"
+            style={{ transform: `translateX(${ropePercent * 0.4}%)` }}
+          >
+            <div className={`text-7xl md:text-8xl select-none transition-all duration-300 ${flashTeam === 1 ? 'scale-110' : ''}`}
+              style={{ filter: flashTeam === 1 ? 'brightness(1.3) drop-shadow(0 0 10px #ef4444)' : 'drop-shadow(2px 4px 6px rgba(0,0,0,0.3))' }}>
+              🦸‍♀️
+            </div>
+            <div className="bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full mt-1 shadow-md">BETA</div>
+          </div>
         </div>
 
-        {/* Position indicator bar */}
-        <div className="w-full max-w-md mx-auto mt-2 bg-white/80 rounded-full h-7 relative overflow-hidden shadow-inner border-2 border-white">
+        {/* Position indicator */}
+        <div className="w-full max-w-md mx-auto mt-2 bg-white/80 rounded-full h-6 relative overflow-hidden shadow-inner border-2 border-white">
           <div className="absolute inset-0 flex">
-            <div className="flex-1 bg-gradient-to-r from-blue-300 to-blue-200" />
+            <div className="flex-1 bg-blue-200" />
             <div className="w-0.5 bg-gray-400" />
-            <div className="flex-1 bg-gradient-to-r from-red-200 to-red-300" />
+            <div className="flex-1 bg-red-200" />
           </div>
-          {/* Baseline markers on bar */}
-          <div className="absolute top-0 bottom-0 left-[15%] w-0.5 bg-blue-600/50" />
-          <div className="absolute top-0 bottom-0 right-[15%] w-0.5 bg-red-600/50" />
-          
-          <motion.div
-            className="absolute top-0.5 bottom-0.5 w-5 bg-gray-800 rounded-full shadow-md z-10"
-            animate={{ left: `calc(${50 + ropePercent / 2.5}% - 10px)` }}
-            transition={{ type: 'spring', damping: 12 }}
+          <div
+            className="absolute top-0.5 bottom-0.5 w-4 bg-gray-800 rounded-full shadow-md transition-all duration-300"
+            style={{ left: `calc(${50 + ropePercent / 2.5}% - 8px)` }}
           />
-          <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700 z-20">
+          <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700">
             {ropePosition < -15 ? '← Alpha Leading!' : ropePosition > 15 ? 'Beta Leading! →' : '⚔️ Tied!'}
           </div>
         </div>
@@ -433,18 +312,18 @@ export const TugOfWar: React.FC<TugOfWarProps> = ({ onBack }) => {
 
       {/* Question & Input Area */}
       <div className="relative z-10 bg-white/95 backdrop-blur-sm rounded-t-3xl p-4 shadow-2xl">
-        <div className="max-w-2xl mx-auto">
-          {/* Active team indicator */}
+        <div className="max-w-4xl mx-auto">
+          {/* Team selector */}
           <div className="flex justify-center gap-4 mb-3">
             <button
               onClick={() => setActiveTeam(0)}
-              className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all ${activeTeam === 0 ? 'bg-blue-500 text-white scale-110 shadow-lg shadow-blue-300' : 'bg-blue-100 text-blue-600 hover:bg-blue-200'}`}
+              className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all ${activeTeam === 0 ? 'bg-blue-500 text-white scale-110 shadow-lg' : 'bg-blue-100 text-blue-600'}`}
             >
               🔵 Alpha
             </button>
             <button
               onClick={() => setActiveTeam(1)}
-              className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all ${activeTeam === 1 ? 'bg-red-500 text-white scale-110 shadow-lg shadow-red-300' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+              className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all ${activeTeam === 1 ? 'bg-red-500 text-white scale-110 shadow-lg' : 'bg-red-100 text-red-600'}`}
             >
               🔴 Beta
             </button>
@@ -452,64 +331,117 @@ export const TugOfWar: React.FC<TugOfWarProps> = ({ onBack }) => {
 
           {/* Question */}
           <div className="text-center mb-3">
-            <motion.p
-              key={currentQuestion.a + currentQuestion.b}
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="text-3xl md:text-4xl font-bold text-gray-800"
-            >
-              {currentQuestion.a} + {currentQuestion.b} = ?
-            </motion.p>
+            <p className="text-3xl md:text-4xl font-bold text-gray-800">
+              {question.num1} + {question.num2} = ?
+            </p>
           </div>
 
-          {/* Input areas for both teams */}
-          <div className="flex gap-2 md:gap-4 justify-center items-center">
-            {/* Team 1 Input */}
-            <div className={`flex-1 text-center p-2 md:p-3 rounded-2xl transition-all ${activeTeam === 0 ? 'bg-blue-100 ring-2 ring-blue-400 shadow-md' : 'bg-blue-50'}`}>
-              <p className="text-xs text-blue-600 font-bold mb-1">Team Alpha</p>
-              <div className="text-xl md:text-2xl font-mono font-bold text-blue-800 min-h-[36px] flex items-center justify-center">
-                {inputValues[0] || <span className="text-gray-300 text-base">...</span>}
-              </div>
+          {/* Input areas */}
+          <div className="flex gap-2 md:gap-4 justify-center items-start">
+            {/* Team 1 */}
+            <div className={`flex-1 max-w-xs transition-all ${activeTeam === 0 ? 'ring-2 ring-blue-400 rounded-2xl' : ''}`}>
+              <NumberPad
+                value={team1Input}
+                onDigit={handleTeam1Digit}
+                onClear={() => setTeam1Input('')}
+                onSubmit={() => { if (team1Input) checkAnswer(0, team1Input); }}
+                onDelete={() => setTeam1Input(prev => prev.slice(0, -1))}
+                color="blue"
+                disabled={gameOver}
+              />
             </div>
 
-            {/* Number pad */}
-            <div className="grid grid-cols-3 gap-1 md:gap-1.5 w-36 md:w-48">
-              {['1','2','3','4','5','6','7','8','9','⌫','0','C'].map(btn => (
-                <button
-                  key={btn}
-                  onClick={() => {
-                    if (btn === 'C') handleInput(activeTeam, '');
-                    else if (btn === '⌫') handleInput(activeTeam, inputValues[activeTeam].slice(0, -1));
-                    else handleInput(activeTeam, inputValues[activeTeam] + btn);
-                  }}
-                  className={`${activeTeam === 0 ? 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700' : 'bg-red-500 hover:bg-red-600 active:bg-red-700'} text-white font-bold rounded-lg h-9 md:h-10 text-base md:text-lg active:scale-90 transition-all shadow-sm`}
-                >
-                  {btn}
-                </button>
-              ))}
-            </div>
-
-            {/* Team 2 Input */}
-            <div className={`flex-1 text-center p-2 md:p-3 rounded-2xl transition-all ${activeTeam === 1 ? 'bg-red-100 ring-2 ring-red-400 shadow-md' : 'bg-red-50'}`}>
-              <p className="text-xs text-red-600 font-bold mb-1">Team Beta</p>
-              <div className="text-xl md:text-2xl font-mono font-bold text-red-800 min-h-[36px] flex items-center justify-center">
-                {inputValues[1] || <span className="text-gray-300 text-base">...</span>}
-              </div>
+            {/* Team 2 */}
+            <div className={`flex-1 max-w-xs transition-all ${activeTeam === 1 ? 'ring-2 ring-red-400 rounded-2xl' : ''}`}>
+              <NumberPad
+                value={team2Input}
+                onDigit={handleTeam2Digit}
+                onClear={() => setTeam2Input('')}
+                onSubmit={() => { if (team2Input) checkAnswer(1, team2Input); }}
+                onDelete={() => setTeam2Input(prev => prev.slice(0, -1))}
+                color="red"
+                disabled={gameOver}
+              />
             </div>
           </div>
 
-          <p className="text-center text-xs text-gray-400 mt-2">Press Tab to switch teams • Use keyboard to type answers</p>
+          <p className="text-center text-xs text-gray-400 mt-2">Press Tab to switch between teams</p>
         </div>
       </div>
 
       {/* Stats Overlay */}
-      <StatsOverlay
-        show={showStats}
-        players={teamStats}
-        winnerIndex={winner}
-        onClose={() => { setShowStats(false); setPhase('setup'); }}
-        gameMode="Tug of War"
-      />
+      {showStats && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl p-6 md:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-2">🎉</div>
+              <h2 className={`text-3xl font-bold ${winner === 'team1' ? 'text-blue-600' : winner === 'team2' ? 'text-red-600' : 'text-gray-600'}`}>
+                {winner === 'team1' ? '🔵 Team Alpha Wins!' : winner === 'team2' ? '🔴 Team Beta Wins!' : "It's a Tie!"}
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className={`rounded-2xl p-4 ${winner === 'team1' ? 'bg-yellow-50 border-2 border-yellow-400' : 'bg-blue-50 border-2 border-blue-200'}`}>
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  {winner === 'team1' && <span className="text-2xl">👑</span>}
+                  <h3 className="text-xl font-bold text-blue-600">🔵 Alpha</h3>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-600">Time:</span><span className="font-semibold">{formatTime(team1Stats.totalTime)}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Correct:</span><span className="font-semibold text-green-600">{team1Stats.correct}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Incorrect:</span><span className="font-semibold text-red-500">{team1Stats.incorrect}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Accuracy:</span><span className="font-semibold">{p1Pct}%</span></div>
+                  <div className="w-full bg-gray-200 rounded-full h-3 mt-2">
+                    <div className={`h-3 rounded-full ${p1Pct >= 70 ? 'bg-green-500' : p1Pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${p1Pct}%` }} />
+                  </div>
+                </div>
+              </div>
+
+              <div className={`rounded-2xl p-4 ${winner === 'team2' ? 'bg-yellow-50 border-2 border-yellow-400' : 'bg-red-50 border-2 border-red-200'}`}>
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  {winner === 'team2' && <span className="text-2xl">👑</span>}
+                  <h3 className="text-xl font-bold text-red-600">🔴 Beta</h3>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-600">Time:</span><span className="font-semibold">{formatTime(team2Stats.totalTime)}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Correct:</span><span className="font-semibold text-green-600">{team2Stats.correct}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Incorrect:</span><span className="font-semibold text-red-500">{team2Stats.incorrect}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Accuracy:</span><span className="font-semibold">{p2Pct}%</span></div>
+                  <div className="w-full bg-gray-200 rounded-full h-3 mt-2">
+                    <div className={`h-3 rounded-full ${p2Pct >= 70 ? 'bg-green-500' : p2Pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${p2Pct}%` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 rounded-2xl p-4 mb-6 border-2 border-blue-200">
+              <h4 className="font-bold text-blue-800 mb-2">💡 Tips to Improve:</h4>
+              <ul className="space-y-1">
+                {getAdvice(winner === 'team1' ? team1Stats : team2Stats).map((tip, idx) => (
+                  <li key={idx} className="text-blue-700 text-sm">{tip}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setGameStarted(false); setShowStats(false); }}
+                className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold py-4 rounded-xl text-lg hover:scale-105 transition-all shadow-lg"
+              >
+                🔄 Play Again!
+              </button>
+              <button
+                onClick={onHome}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-4 rounded-xl text-lg transition-all"
+              >
+                🏠 Home
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default TugOfWar;
