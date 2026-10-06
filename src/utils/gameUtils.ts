@@ -13,15 +13,44 @@ export interface PlayerStats {
   correctAnswers: number[];
 }
 
-export function generateQuestion(): Question {
-  const isThreeDigit = Math.random() > 0.5;
+export type Difficulty = '1-digit' | '1x2-digit' | '2-digit' | '2x3-digit' | '3-digit';
+
+export function generateQuestion(difficulty: Difficulty = '2-digit'): Question {
   let num1: number, num2: number;
-  if (isThreeDigit) {
-    num1 = Math.floor(Math.random() * 900) + 100;
-    num2 = Math.floor(Math.random() * 900) + 100;
-  } else {
-    num1 = Math.floor(Math.random() * 90) + 10;
-    num2 = Math.floor(Math.random() * 90) + 10;
+  switch (difficulty) {
+    case '1-digit':
+      num1 = Math.floor(Math.random() * 9) + 1;
+      num2 = Math.floor(Math.random() * 9) + 1;
+      break;
+    case '1x2-digit':
+      if (Math.random() > 0.5) {
+        num1 = Math.floor(Math.random() * 9) + 1;
+        num2 = Math.floor(Math.random() * 90) + 10;
+      } else {
+        num1 = Math.floor(Math.random() * 90) + 10;
+        num2 = Math.floor(Math.random() * 9) + 1;
+      }
+      break;
+    case '2-digit':
+      num1 = Math.floor(Math.random() * 90) + 10;
+      num2 = Math.floor(Math.random() * 90) + 10;
+      break;
+    case '2x3-digit':
+      if (Math.random() > 0.5) {
+        num1 = Math.floor(Math.random() * 90) + 10;
+        num2 = Math.floor(Math.random() * 900) + 100;
+      } else {
+        num1 = Math.floor(Math.random() * 900) + 100;
+        num2 = Math.floor(Math.random() * 90) + 10;
+      }
+      break;
+    case '3-digit':
+      num1 = Math.floor(Math.random() * 900) + 100;
+      num2 = Math.floor(Math.random() * 900) + 100;
+      break;
+    default:
+      num1 = Math.floor(Math.random() * 90) + 10;
+      num2 = Math.floor(Math.random() * 90) + 10;
   }
   return { num1, num2, answer: num1 + num2 };
 }
