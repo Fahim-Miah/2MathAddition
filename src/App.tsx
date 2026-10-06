@@ -1,38 +1,41 @@
 import React, { useState } from 'react';
-import { LandingPage } from './components/LandingPage';
-import { TwoPlayerGame } from './components/TwoPlayerGame';
-import { PracticeMode } from './components/PracticeMode';
-import { LightningRound } from './components/LightningRound';
-import { InfinityRound } from './components/InfinityRound';
-import { TugOfWar } from './components/TugOfWar';
-
-type GameMode = 'home' | 'two-player' | 'practice' | 'lightning' | 'infinity' | 'tug-of-war';
+import LandingPage from './components/LandingPage';
+import TwoPlayerGame from './components/TwoPlayerGame';
+import OnePlayerGame from './components/OnePlayerGame';
+import LightningRound from './components/LightningRound';
+import InfinityRound from './components/InfinityRound';
+import TugOfWar from './components/TugOfWar';
+import { GameMode } from './utils/gameUtils';
 
 function App() {
-  const [currentGame, setCurrentGame] = useState<GameMode>('home');
+  const [currentMode, setCurrentMode] = useState<GameMode>('landing');
 
-  const handleSelectGame = (game: string) => {
-    setCurrentGame(game as GameMode);
+  const goToHome = () => setCurrentMode('landing');
+
+  const renderGame = () => {
+    switch (currentMode) {
+      case 'landing':
+        return <LandingPage onSelectMode={setCurrentMode} />;
+      case 'two-player':
+        return <TwoPlayerGame onHome={goToHome} />;
+      case 'one-player':
+        return <OnePlayerGame onHome={goToHome} />;
+      case 'lightning':
+        return <LightningRound onHome={goToHome} />;
+      case 'infinity':
+        return <InfinityRound onHome={goToHome} />;
+      case 'tug-of-war':
+        return <TugOfWar onHome={goToHome} />;
+      default:
+        return <LandingPage onSelectMode={setCurrentMode} />;
+    }
   };
 
-  const handleBack = () => {
-    setCurrentGame('home');
-  };
-
-  switch (currentGame) {
-    case 'two-player':
-      return <TwoPlayerGame onBack={handleBack} />;
-    case 'practice':
-      return <PracticeMode onBack={handleBack} />;
-    case 'lightning':
-      return <LightningRound onBack={handleBack} />;
-    case 'infinity':
-      return <InfinityRound onBack={handleBack} />;
-    case 'tug-of-war':
-      return <TugOfWar onBack={handleBack} />;
-    default:
-      return <LandingPage onSelectGame={handleSelectGame} />;
-  }
+  return (
+    <div className="font-sans">
+      {renderGame()}
+    </div>
+  );
 }
 
 export default App;

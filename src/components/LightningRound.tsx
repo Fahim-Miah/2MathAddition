@@ -1,106 +1,90 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { generateAdditionQuestion, generateMultipleChoice } from '../utils/math';
-import { StatsOverlay } from './StatsOverlay';
+import confetti from 'canvas-confetti';
+import { generateQuestion, generateMultipleChoice, PlayerStats, calculatePercentage, formatTime, getAdvice } from '../utils/gameUtils';
 
 interface LightningRoundProps {
-  onBack: () => void;
+  onHome: () => void;
 }
 
-export const LightningRound: React.FC<LightningRoundProps> = ({ onBack }) => {
-  const [phase, setPhase] = useState<'setup' | 'playing' | 'finished'>('setup');
-  const [totalQuestions, setTotalQuestions] = useState(10);
-  const [currentQuestion, setCurrentQuestion] = useState(generateAdditionQuestion());
+const LightningRound: React.FC<LightningRoundProps> = ({ onHome }) => {
+  const [gameStarted, setGameStarted] = useState(false);
+  const [question, setQuestion] = useState(generateQuestion());
   const [choices, setChoices] = useState<number[]>([]);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
-  const [correct, setCorrect] = useState(0);
-  const [incorrect, setIncorrect] = useState(0);
-  const [startTime, setStartTime] = useState(0);
-  const [endTime, setEndTime] = useState(0);
+  const [score, setScore] = useState(0);
+  const [incorrectCount, setIncorrectCount] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [gameOver, setGameOver] = useState(false);
   const [showStats, setShowStats] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(0);
-  const [inputValue, setInputValue] = useState('');
+  const [startTime, setStartTime] = useState(0);
   const [questionNum, setQuestionNum] = useState(1);
 
-  const QUESTION_TIME = 10; // seconds per question
+  const [stats, setStats] = useState<PlayerStats>({
+    correct: 0, incorrect: 0, totalTime: 0,
+    questionsAnswered: [], answersGiven: [], correctAnswers: [],
+  });
 
-  const initGame = (num: number) => {
-    setTotalQuestions(num);
-    const q = generateAdditionQuestion();
-    setCurrentQuestion(q);
-    setChoices(generateMultipleChoice(q.answer));
-    setCorrect(0);
-    setIncorrect(0);
-    setStartTime(Date.now());
-    setTimeLeft(QUESTION_TIME);
-    setQuestionNum(1);
-    setPhase('playing');
-  };
-
-  // Timer
   useEffect(() => {
-    if (phase !== 'playing') return;
-    const interval = setInterval(() => {
+    if (gameStarted && !gameOver) {
+      setChoices(generateMultipleChoice(question.answer));
+    }
+  }, [question, gameStarted, gameOver]);
+
+  useEffect(() => {
+    if (!gameStarted || gameOver) return;
+    const timer = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
-          // Time's up for this question
-          setIncorrect(i => i + 1);
-          setSelectedAnswer(null);
-          setIsCorrect(null);
-          setInputValue('');
-          if (questionNum >= totalQuestions) {
-            setEndTime(Date.now());
-            setPhase('finished');
-            setShowStats(true);
-            return 0;
-          } else {
-            const q = generateAdditionQuestion();
-            setCurrentQuestion(q);
-            setChoices(generateMultipleChoice(q.answer));
-            setQuestionNum(n => n + 1);
-            return QUESTION_TIME;
-          }
+          setGameOver(true);
+          setTimeout(() => setShowStats(true), 1000);
+          return 0;
         }
         return prev - 1;
       });
     }, 1000);
-    return () => clearInterval(interval);
-  }, [phase, questionNum, totalQuestions]);
+    return () => clearInterval(timer);
+  }, [gameStarted, gameOver]);
 
   const handleChoiceSelect = useCallback((choice: number) => {
-    if (selectedAnswer !== null) return;
+    if (selectedAnswer !== null || gameOver) return;
     setSelectedAnswer(choice);
-    const isRight = choice === currentQuestion.answer;
-    setIsCorrect(isRight);
+    const encodedQ = question.num1 * 10000 + question.num2;
+    const right = choice === question.answer;
 
-    if (isRight) {
-      setCorrect(c => c + 1);
+    if (right) {
+      setIsCorrect(true);
+      setScore(s => s + 1);
+      setStats(prev => ({
+        ...prev,
+        correct: prev.correct + 1,
+        questionsAnswered: [...prev.questionsAnswered, encodedQ],
+        answersGiven: [...prev.answersGiven, choice],
+        correctAnswers: [...prev.correctAnswers, question.answer],
+      }));
     } else {
-      setIncorrect(i => i + 1);
+      setIsCorrect(false);
+      setIncorrectCount(i => i + 1);
+      setStats(prev => ({
+        ...prev,
+        incorrect: prev.incorrect + 1,
+        questionsAnswered: [...prev.questionsAnswered, encodedQ],
+        answersGiven: [...prev.answersGiven, choice],
+        correctAnswers: [...prev.correctAnswers, question.answer],
+      }));
     }
 
     setTimeout(() => {
       setSelectedAnswer(null);
       setIsCorrect(null);
-      setInputValue('');
-      if (questionNum >= totalQuestions) {
-        setEndTime(Date.now());
-        setPhase('finished');
-        setShowStats(true);
-      } else {
-        const q = generateAdditionQuestion();
-        setCurrentQuestion(q);
-        setChoices(generateMultipleChoice(q.answer));
-        setQuestionNum(n => n + 1);
-        setTimeLeft(QUESTION_TIME);
-      }
+      setQuestion(generateQuestion());
+      setQuestionNum(n => n + 1);
     }, 1000);
-  }, [selectedAnswer, currentQuestion, questionNum, totalQuestions]);
+  }, [selectedAnswer, gameOver, question]);
 
-  // Keyboard support (1-4 for choices)
+  // Keyboard support
   useEffect(() => {
-    if (phase !== 'playing' || selectedAnswer !== null) return;
+    if (!gameStarted || gameOver || selectedAnswer !== null) return;
     const handleKey = (e: KeyboardEvent) => {
       if (e.key >= '1' && e.key <= '4') {
         const idx = parseInt(e.key) - 1;
@@ -111,141 +95,200 @@ export const LightningRound: React.FC<LightningRoundProps> = ({ onBack }) => {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [phase, selectedAnswer, choices, handleChoiceSelect]);
+  }, [gameStarted, gameOver, selectedAnswer, choices, handleChoiceSelect]);
 
-  if (phase === 'setup') {
+  const startGame = () => {
+    const q = generateQuestion();
+    setQuestion(q);
+    setChoices(generateMultipleChoice(q.answer));
+    setScore(0);
+    setIncorrectCount(0);
+    setTimeLeft(60);
+    setGameOver(false);
+    setShowStats(false);
+    setGameStarted(true);
+    setStartTime(Date.now());
+    setQuestionNum(1);
+    setStats({ correct: 0, incorrect: 0, totalTime: 0, questionsAnswered: [], answersGiven: [], correctAnswers: [] });
+  };
+
+  const pct = calculatePercentage(stats.correct, stats.questionsAnswered.length);
+  const totalTime = 60 - timeLeft;
+
+  if (!gameStarted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-yellow-100 to-orange-100 flex items-center justify-center p-4">
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
-        >
-          <h2 className="text-3xl font-bold text-center text-orange-700 mb-6">⚡ Lightning Round</h2>
-          <p className="text-center text-gray-600 mb-2">Quick multiple-choice questions!</p>
-          <p className="text-center text-gray-500 mb-6 text-sm">You have {QUESTION_TIME} seconds per question. Press 1-4 on keyboard or click to answer.</p>
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            {[5, 10, 15, 20].map(num => (
-              <motion.button
-                key={num}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => initGame(num)}
-                className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold py-4 rounded-2xl text-xl shadow-lg"
-              >
-                {num} Questions
-              </motion.button>
-            ))}
+      <div className="min-h-screen bg-gradient-to-br from-orange-100 via-amber-50 to-yellow-100 flex items-center justify-center">
+        <div className="bg-white rounded-3xl p-8 shadow-2xl max-w-md w-full mx-4 text-center">
+          <div className="text-6xl mb-4">⚡</div>
+          <h2 className="text-3xl font-bold text-orange-700 mb-6">Lightning Round</h2>
+          
+          <div className="bg-orange-50 rounded-2xl p-4 mb-6 border-2 border-orange-200 text-left">
+            <h4 className="font-bold text-orange-700 mb-2">📋 Rules:</h4>
+            <ul className="text-sm text-orange-800 space-y-1">
+              <li>• You have 60 seconds</li>
+              <li>• Answer multiple-choice questions</li>
+              <li>• Pick from 4 choices</li>
+              <li>• Press 1-4 on keyboard or click!</li>
+            </ul>
           </div>
-          <button onClick={onBack} className="w-full text-gray-500 hover:text-gray-700 font-medium py-2">
-            ← Back to Menu
+
+          <button
+            onClick={startGame}
+            className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-4 px-6 rounded-xl text-xl transition-all duration-200 transform hover:scale-105 shadow-lg"
+          >
+            ⚡ Start Lightning Round!
           </button>
-        </motion.div>
+          <button
+            onClick={onHome}
+            className="block mx-auto mt-4 text-gray-500 hover:text-gray-700 font-medium"
+          >
+            ← Back to Home
+          </button>
+        </div>
       </div>
     );
   }
 
-  const progress = (questionNum / totalQuestions) * 100;
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-yellow-100 to-orange-100 flex flex-col items-center justify-center p-4">
-      {/* Timer & Progress */}
-      <div className="w-full max-w-lg mb-6">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-sm font-semibold text-gray-600">
-            Question {questionNum}/{totalQuestions}
-          </span>
-          <motion.div
-            key={timeLeft}
-            initial={{ scale: 1.3 }}
-            animate={{ scale: 1 }}
-            className={`text-2xl font-bold ${timeLeft <= 3 ? 'text-red-500' : 'text-orange-600'}`}
+    <div className="min-h-screen bg-gradient-to-br from-orange-100 via-amber-50 to-yellow-100">
+      <div className="bg-white/80 backdrop-blur-sm shadow-lg p-4">
+        <div className="max-w-2xl mx-auto flex items-center justify-between">
+          <button
+            onClick={onHome}
+            className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-xl transition-all"
           >
+            ← Back
+          </button>
+          <h1 className="text-2xl font-bold text-orange-700">⚡ Lightning Round!</h1>
+          <div className={`text-lg font-bold ${timeLeft <= 10 ? 'text-red-600 animate-pulse' : 'text-gray-600'}`}>
             ⏱️ {timeLeft}s
-          </motion.div>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-3">
-          <motion.div
-            className="h-3 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500"
-            animate={{ width: `${progress}%` }}
-          />
+          </div>
         </div>
       </div>
 
-      {/* Question */}
-      <motion.div
-        key={`${currentQuestion.a}-${currentQuestion.b}-${questionNum}`}
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="bg-white rounded-3xl p-8 shadow-2xl text-center mb-6 w-full max-w-lg"
-      >
-        <p className="text-5xl font-bold text-gray-800 mb-6">
-          {currentQuestion.a} + {currentQuestion.b} = ?
-        </p>
+      <div className="max-w-2xl mx-auto px-4 mt-4">
+        <div className="bg-white rounded-2xl p-4 shadow-lg text-center">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-orange-600 font-bold">✅ {score}</span>
+            <span className="text-gray-500 text-sm">Question {questionNum}</span>
+            <span className="text-red-500 font-bold">❌ {incorrectCount}</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-3">
+            <div className="h-3 rounded-full bg-gradient-to-r from-orange-400 to-amber-500 transition-all" style={{ width: `${(timeLeft / 60) * 100}%` }} />
+          </div>
+        </div>
+      </div>
 
-        {/* Choices */}
-        <div className="grid grid-cols-2 gap-3">
-          {choices.map((choice, idx) => {
-            let btnClass = 'bg-gray-100 hover:bg-orange-100 text-gray-800 border-2 border-gray-200';
-            if (selectedAnswer !== null) {
-              if (choice === currentQuestion.answer) {
-                btnClass = 'bg-green-100 border-2 border-green-500 text-green-800';
-              } else if (choice === selectedAnswer && !isCorrect) {
-                btnClass = 'bg-red-100 border-2 border-red-500 text-red-800';
+      {gameOver && !showStats && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-3xl p-8 text-center shadow-2xl animate-bounce">
+            <div className="text-7xl mb-4">⚡</div>
+            <h2 className="text-4xl font-bold text-orange-600">Time's Up!</h2>
+            <p className="text-gray-500 mt-2 text-lg">Loading stats...</p>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-2xl mx-auto px-4 mt-6">
+        <div className="bg-white rounded-3xl p-8 shadow-xl text-center">
+          <p className="text-gray-500 text-lg mb-2">What is:</p>
+          <div className="text-5xl md:text-6xl font-bold text-gray-800 mb-6">
+            {question.num1} + {question.num2} = ?
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            {choices.map((choice, idx) => {
+              let btnClass = 'bg-gray-100 hover:bg-orange-100 text-gray-800 border-2 border-gray-200';
+              if (selectedAnswer !== null) {
+                if (choice === question.answer) {
+                  btnClass = 'bg-green-100 border-2 border-green-500 text-green-800';
+                } else if (choice === selectedAnswer && !isCorrect) {
+                  btnClass = 'bg-red-100 border-2 border-red-500 text-red-800';
+                }
               }
-            }
-            return (
-              <motion.button
-                key={idx}
-                whileHover={selectedAnswer === null ? { scale: 1.05 } : {}}
-                whileTap={selectedAnswer === null ? { scale: 0.95 } : {}}
-                onClick={() => handleChoiceSelect(choice)}
-                disabled={selectedAnswer !== null}
-                className={`${btnClass} rounded-2xl py-4 text-2xl font-bold transition-colors`}
-              >
-                <span className="text-sm text-gray-400 mr-1">{idx + 1}.</span> {choice}
-              </motion.button>
-            );
-          })}
-        </div>
+              return (
+                <button
+                  key={idx}
+                  onClick={() => handleChoiceSelect(choice)}
+                  disabled={selectedAnswer !== null}
+                  className={`${btnClass} rounded-2xl py-4 text-2xl font-bold transition-colors`}
+                >
+                  <span className="text-sm text-gray-400 mr-1">{idx + 1}.</span> {choice}
+                </button>
+              );
+            })}
+          </div>
 
-        <AnimatePresence>
           {isCorrect !== null && (
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className={`mt-4 font-bold text-lg ${isCorrect ? 'text-green-600' : 'text-red-600'}`}
-            >
-              {isCorrect ? '✅ Correct!' : `❌ The answer was ${currentQuestion.answer}`}
-            </motion.p>
+            <p className={`mt-4 font-bold text-lg ${isCorrect ? 'text-green-600' : 'text-red-600'}`}>
+              {isCorrect ? '✅ Correct!' : `❌ The answer was ${question.answer}`}
+            </p>
           )}
-        </AnimatePresence>
-      </motion.div>
-
-      {/* Score */}
-      <div className="flex gap-4 text-sm font-semibold">
-        <span className="text-green-600">✅ {correct}</span>
-        <span className="text-red-600">❌ {incorrect}</span>
+        </div>
       </div>
 
-      <button onClick={onBack} className="mt-6 text-gray-500 hover:text-gray-700 font-medium">
-        ← Back to Menu
-      </button>
+      <p className="text-center text-gray-400 text-sm mt-4">Press 1-4 on your keyboard to select an answer</p>
 
-      {/* Stats Overlay */}
-      <StatsOverlay
-        show={showStats}
-        players={[{
-          name: 'You',
-          correct,
-          incorrect,
-          total: correct + incorrect,
-          time: endTime - startTime,
-        }]}
-        onClose={() => { setShowStats(false); setPhase('setup'); }}
-        gameMode="Lightning Round"
-      />
+      {showStats && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-2">⚡</div>
+              <h2 className="text-3xl font-bold text-orange-600">Lightning Complete!</h2>
+            </div>
+
+            <div className="bg-orange-50 rounded-2xl p-4 mb-4 border-2 border-orange-200">
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Time Used:</span>
+                  <span className="font-semibold">{formatTime(totalTime)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Correct:</span>
+                  <span className="font-semibold text-green-600">{score}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Incorrect:</span>
+                  <span className="font-semibold text-red-500">{incorrectCount}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Accuracy:</span>
+                  <span className="font-semibold">{pct}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3 mt-2">
+                  <div className={`h-3 rounded-full ${pct >= 70 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 rounded-2xl p-4 mb-6 border-2 border-blue-200">
+              <h4 className="font-bold text-blue-800 mb-2">💡 Tips to Improve:</h4>
+              <ul className="space-y-1">
+                {getAdvice(stats).map((tip, idx) => (
+                  <li key={idx} className="text-blue-700 text-sm">{tip}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={startGame}
+                className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-4 rounded-xl text-lg hover:scale-105 transition-all shadow-lg"
+              >
+                ⚡ Play Again!
+              </button>
+              <button
+                onClick={onHome}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-4 rounded-xl text-lg transition-all"
+              >
+                🏠 Home
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default LightningRound;
