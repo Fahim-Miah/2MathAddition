@@ -168,15 +168,11 @@ const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
     return () => window.removeEventListener('keydown', handleKey);
   }, [gameStarted, gameOver]);
 
-  // Disable right-click context menu during gameplay
-  useEffect(() => {
-    if (!gameStarted || gameOver) return;
-    const handleContextMenu = (e: MouseEvent) => {
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (gameStarted && !gameOver) {
       e.preventDefault();
-    };
-    window.addEventListener('contextmenu', handleContextMenu);
-    return () => window.removeEventListener('contextmenu', handleContextMenu);
-  }, [gameStarted, gameOver]);
+    }
+  };
 
   const ropePercent = (ropePosition / BASELINE) * 40;
   const p1Pct = calculatePercentage(team1Stats.correct, team1Stats.questionsAnswered.length);
@@ -263,7 +259,10 @@ const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-sky-400 via-sky-300 to-green-400 overflow-hidden relative">
+    <div 
+      className="min-h-screen flex flex-col bg-gradient-to-b from-sky-400 via-sky-300 to-green-400 overflow-hidden relative"
+      onContextMenu={handleContextMenu}
+    >
       {/* Clouds */}
       <div className="absolute top-0 left-0 w-full h-40 pointer-events-none overflow-hidden">
         {[...Array(4)].map((_, i) => (
