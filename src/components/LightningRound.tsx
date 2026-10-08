@@ -46,6 +46,11 @@ const LightningRound: React.FC<LightningRoundProps> = ({ onHome }) => {
     return () => clearInterval(timer);
   }, [gameStarted, gameOver]);
 
+  const handlePointerDown = useCallback((e: React.PointerEvent, action: () => void) => {
+    e.preventDefault(); // Prevents the subsequent click event
+    action();
+  }, []);
+
   const handleChoiceSelect = useCallback((choice: number) => {
     if (selectedAnswer !== null || gameOver) return;
     setSelectedAnswer(choice);
@@ -209,9 +214,16 @@ const LightningRound: React.FC<LightningRoundProps> = ({ onHome }) => {
               return (
                 <button
                   key={idx}
-                  onClick={() => handleChoiceSelect(choice)}
+                  onPointerDown={(e) => handlePointerDown(e, () => handleChoiceSelect(choice))}
                   disabled={selectedAnswer !== null}
                   className={`${btnClass} rounded-2xl py-4 text-2xl font-bold transition-colors`}
+                  style={{ 
+                    touchAction: 'manipulation',
+                    WebkitTapHighlightColor: 'transparent',
+                    WebkitTouchCallout: 'none',
+                    WebkitUserSelect: 'none',
+                    userSelect: 'none',
+                  }}
                 >
                   <span className="text-sm text-gray-400 mr-1">{idx + 1}.</span> {choice}
                 </button>

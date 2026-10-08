@@ -155,6 +155,12 @@ const TwoPlayerGame: React.FC<TwoPlayerGameProps> = ({ onHome }) => {
     setPlayer2Stats({ correct: 0, incorrect: 0, totalTime: 0, questionsAnswered: [], answersGiven: [], correctAnswers: [] });
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (gameStarted && !gameOver) {
+      e.preventDefault();
+    }
+  };
+
   if (!gameStarted) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-100 via-purple-50 to-red-100 flex items-center justify-center">
@@ -214,7 +220,10 @@ const TwoPlayerGame: React.FC<TwoPlayerGameProps> = ({ onHome }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-100 via-purple-50 to-red-100">
+    <div 
+      className="min-h-screen bg-gradient-to-br from-blue-100 via-purple-50 to-red-100"
+      onContextMenu={handleContextMenu}
+    >
       <div className="bg-white/80 backdrop-blur-sm shadow-lg p-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <button

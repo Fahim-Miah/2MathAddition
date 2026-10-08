@@ -80,14 +80,9 @@ const NumberPad: React.FC<NumberPadProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [enableKeyboard, disabled, onDigit, onSubmit, onDelete, onClear]);
 
-  const handleTouchStart = useCallback((e: React.TouchEvent, action: () => void) => {
+  const handlePointerDown = useCallback((e: React.PointerEvent, action: () => void) => {
     if (disabled) return;
-    e.preventDefault();
-    action();
-  }, [disabled]);
-
-  const handleClick = useCallback((e: React.MouseEvent, action: () => void) => {
-    if (disabled) return;
+    e.preventDefault(); // Prevents the subsequent click event
     action();
   }, [disabled]);
 
@@ -108,8 +103,7 @@ const NumberPad: React.FC<NumberPadProps> = ({
         {topDigits.map((digit) => (
           <button
             key={digit}
-            onTouchStart={(e) => handleTouchStart(e, () => onDigit(digit))}
-            onClick={(e) => handleClick(e, () => onDigit(digit))}
+            onPointerDown={(e) => handlePointerDown(e, () => onDigit(digit))}
             disabled={disabled}
             className={`${colors.bg} ${colors.hover} text-white font-bold text-xl py-3 rounded-xl transition-all duration-150 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md`}
             style={{ 
@@ -128,8 +122,7 @@ const NumberPad: React.FC<NumberPadProps> = ({
       {/* Bottom row - Centered zero */}
       <div className="grid grid-cols-3 gap-2 mb-3">
         <button
-          onTouchStart={(e) => handleTouchStart(e, onClear)}
-          onClick={(e) => handleClick(e, onClear)}
+          onPointerDown={(e) => handlePointerDown(e, onClear)}
           disabled={disabled}
           className="bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 rounded-xl transition-all duration-150 transform hover:scale-105 active:scale-95 disabled:opacity-50 shadow-md"
           style={{ 
@@ -143,8 +136,7 @@ const NumberPad: React.FC<NumberPadProps> = ({
           Clear
         </button>
         <button
-          onTouchStart={(e) => handleTouchStart(e, () => onDigit('0'))}
-          onClick={(e) => handleClick(e, () => onDigit('0'))}
+          onPointerDown={(e) => handlePointerDown(e, () => onDigit('0'))}
           disabled={disabled}
           className={`${colors.bg} ${colors.hover} text-white font-bold text-xl py-3 rounded-xl transition-all duration-150 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md`}
           style={{ 
@@ -158,8 +150,7 @@ const NumberPad: React.FC<NumberPadProps> = ({
           0
         </button>
         <button
-          onTouchStart={(e) => handleTouchStart(e, onDelete)}
-          onClick={(e) => handleClick(e, onDelete)}
+          onPointerDown={(e) => handlePointerDown(e, onDelete)}
           disabled={disabled}
           className="bg-yellow-400 hover:bg-yellow-500 text-white font-bold py-3 rounded-xl transition-all duration-150 transform hover:scale-105 active:scale-95 disabled:opacity-50 shadow-md"
           style={{ 
@@ -176,8 +167,7 @@ const NumberPad: React.FC<NumberPadProps> = ({
       
       {/* Submit Button */}
       <button
-        onTouchStart={(e) => handleTouchStart(e, onSubmit)}
-        onClick={(e) => handleClick(e, onSubmit)}
+        onPointerDown={(e) => handlePointerDown(e, onSubmit)}
         disabled={disabled || value.length === 0}
         className={`w-full ${colors.submit} text-white font-bold py-3 rounded-xl transition-all duration-150 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md text-lg`}
         style={{ 

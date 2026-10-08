@@ -92,6 +92,11 @@ const InfinityRound: React.FC<InfinityRoundProps> = ({ onHome }) => {
     }, 300);
   };
 
+  const handlePointerDown = useCallback((e: React.PointerEvent, action: () => void) => {
+    e.preventDefault(); // Prevents the subsequent click event
+    action();
+  }, []);
+
   const pct = calculatePercentage(stats.correct, stats.questionsAnswered.length);
 
   if (!gameStarted) {
@@ -193,9 +198,16 @@ const InfinityRound: React.FC<InfinityRoundProps> = ({ onHome }) => {
 
       <div className="text-center pb-8">
         <button
-          onClick={endRound}
+          onPointerDown={(e) => handlePointerDown(e, endRound)}
           disabled={gameOver}
           className="bg-gradient-to-r from-gray-600 to-gray-700 text-white font-bold py-3 px-8 rounded-xl text-lg hover:scale-105 transition-all shadow-lg disabled:opacity-50"
+          style={{ 
+            touchAction: 'manipulation',
+            WebkitTapHighlightColor: 'transparent',
+            WebkitTouchCallout: 'none',
+            WebkitUserSelect: 'none',
+            userSelect: 'none',
+          }}
         >
           🏁 End Round
         </button>
