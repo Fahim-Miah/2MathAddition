@@ -134,6 +134,11 @@ const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
     setTeam2Input(prev => prev.length < 4 ? prev + digit : prev);
   };
 
+  const handlePointerDown = useCallback((e: React.PointerEvent, action: () => void) => {
+    e.preventDefault(); // Prevents the subsequent click event
+    action();
+  }, []);
+
   const startGame = (minutes: number) => {
     setTimeLimit(minutes);
     setTimeRemaining(minutes * 60);
@@ -273,9 +278,16 @@ const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
         </div>
         <div className="max-w-4xl mx-auto mt-2 flex justify-center">
           <button
-            onClick={() => endGame()}
+            onPointerDown={(e) => handlePointerDown(e, () => endGame())}
             disabled={gameOver}
             className="bg-gradient-to-r from-gray-600 to-gray-700 text-white font-bold py-2 px-4 rounded-xl text-sm hover:scale-105 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ 
+              touchAction: 'manipulation',
+              WebkitTapHighlightColor: 'transparent',
+              WebkitTouchCallout: 'none',
+              WebkitUserSelect: 'none',
+              userSelect: 'none',
+            }}
           >
             🏁 End Match
           </button>
@@ -361,14 +373,28 @@ const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
           {/* Team selector */}
           <div className="flex justify-center gap-4 mb-3">
             <button
-              onClick={() => setActiveTeam(0)}
+              onPointerDown={(e) => handlePointerDown(e, () => setActiveTeam(0))}
               className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all ${activeTeam === 0 ? 'bg-blue-500 text-white scale-110 shadow-lg' : 'bg-blue-100 text-blue-600'}`}
+              style={{ 
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent',
+                WebkitTouchCallout: 'none',
+                WebkitUserSelect: 'none',
+                userSelect: 'none',
+              }}
             >
               🔵 Alpha
             </button>
             <button
-              onClick={() => setActiveTeam(1)}
+              onPointerDown={(e) => handlePointerDown(e, () => setActiveTeam(1))}
               className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all ${activeTeam === 1 ? 'bg-red-500 text-white scale-110 shadow-lg' : 'bg-red-100 text-red-600'}`}
+              style={{ 
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent',
+                WebkitTouchCallout: 'none',
+                WebkitUserSelect: 'none',
+                userSelect: 'none',
+              }}
             >
               🔴 Beta
             </button>
