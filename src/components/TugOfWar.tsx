@@ -168,6 +168,16 @@ const TugOfWar: React.FC<TugOfWarProps> = ({ onHome }) => {
     return () => window.removeEventListener('keydown', handleKey);
   }, [gameStarted, gameOver]);
 
+  // Disable right-click context menu during gameplay
+  useEffect(() => {
+    if (!gameStarted || gameOver) return;
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('contextmenu', handleContextMenu);
+    return () => window.removeEventListener('contextmenu', handleContextMenu);
+  }, [gameStarted, gameOver]);
+
   const ropePercent = (ropePosition / BASELINE) * 40;
   const p1Pct = calculatePercentage(team1Stats.correct, team1Stats.questionsAnswered.length);
   const p2Pct = calculatePercentage(team2Stats.correct, team2Stats.questionsAnswered.length);

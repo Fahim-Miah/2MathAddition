@@ -155,6 +155,16 @@ const TwoPlayerGame: React.FC<TwoPlayerGameProps> = ({ onHome }) => {
     setPlayer2Stats({ correct: 0, incorrect: 0, totalTime: 0, questionsAnswered: [], answersGiven: [], correctAnswers: [] });
   };
 
+  // Disable right-click context menu during gameplay
+  useEffect(() => {
+    if (!gameStarted || gameOver) return;
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('contextmenu', handleContextMenu);
+    return () => window.removeEventListener('contextmenu', handleContextMenu);
+  }, [gameStarted, gameOver]);
+
   if (!gameStarted) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-100 via-purple-50 to-red-100 flex items-center justify-center">
